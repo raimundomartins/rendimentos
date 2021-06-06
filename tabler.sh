@@ -1,5 +1,18 @@
 #!/bin/bash
 
+TAX_NUMBER='\([0-9]\+\),\([0-9]\+\)\%'
+MONEY_NUMBER='\(\([0-9]\+\)\.\)\?\([0-9]\+\),\([0-9]\+\)'
+
+tr '\n' '|' | sed \
+	-e "s/$TAX_NUMBER\s*|$/\1.\2])\n];\n/" \
+	-e "s/$TAX_NUMBER\s*|/\1.\2, /g" \
+	-e "s/, Superior\s*|a\s*|$MONEY_NUMBER\s*|/]),\n\t(std::f64::INFINITY, [/" \
+	-e "s/|$MONEY_NUMBER\s*|/(\2_\3.\4, [/g" \
+	-e 's/(_/(/g' \
+	-e 's/, Até\s*|\s*/]),\n\t/g' \
+	-e 's/^Até\s*|\s*/[\n\t/'
+
+exit 0
 sed \
  -e 's/%Até/]),\n/g' \
  -e 's/,\([0-9][0-9][0-9]\)/_\1/g' \
