@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 anyhow = "*"
 paste = "*"
+derive_builder = "*"

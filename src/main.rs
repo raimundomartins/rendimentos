@@ -8,85 +8,65 @@
 
 #![feature(const_fn_floating_point_arithmetic)]
 #![feature(trait_alias)]
-#![allow(dead_code)]
 #![allow(non_upper_case_globals)]
 
-use anyhow::{ensure, Result};
-
-pub mod income;
 pub mod irs;
-pub mod rate;
+pub mod salary;
 pub mod ss;
+pub mod units;
 
-pub type Tax = f64;
-use income::Income;
-use rate::*;
+use salary::Salary;
+use units::*;
 
 pub mod non_taxation_limits {
-	use crate::rate::{Frequency, Money, MoneyRate};
-	pub const subsidio_refeição: MoneyRate = MoneyRate::new(4.77, Frequency::Workdaily);
-	pub const vale_refeição: MoneyRate = MoneyRate::new(7.63, Frequency::Workdaily);
-	pub const ajudas_custo_km: Money = 0.36;
-	pub const ajudas_custo_dia: MoneyRate = MoneyRate::new(50.20, Frequency::Workdaily);
-	pub const isencao_retencao_cat_b: MoneyRate = MoneyRate::new(10_000.0, Frequency::Yearly);
+	use crate::units::{Money, MoneyRate, Workdaily, Yearly};
+	pub const SUBSIDIO_REFEICAO: MoneyRate<Workdaily> = MoneyRate::new(Money::new(4.77), Workdaily);
+	pub const VALE_REFEICAO: MoneyRate<Workdaily> = MoneyRate::new(Money::new(7.63), Workdaily);
+	pub const AJUDAS_CUSTO_KM: Money = Money::new(0.36);
+	pub const AJUDAS_CUSTO_DIA: MoneyRate<Workdaily> = MoneyRate::new(Money::new(50.20), Workdaily);
+	pub const ISENCAO_RETENCAO_CAT_B: MoneyRate<Yearly> = MoneyRate::new(Money::new(10_000.0), Yearly);
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ElementoFamiliar {
+pub struct FamilyElement {
 	casado: bool,
 	titular_unico: bool,
 	dependentes: usize,
 }
 
-const IAS: MoneyRate = MoneyRate::new(443.20, Frequency::Monthly); //438.81; // 2021 438.81; // 2020 435.76; // 2019
-const salario_minimo: MoneyRate = MoneyRate::new(705.00, Frequency::Monthly); //2022 665.00; //2021 635.00; //2020 600.0; // 2019
-
-fn bruto2liquido(bruto: MoneyRate, family: ElementoFamiliar) -> Money {
-	bruto.value() * (1.0 - ss::tax::trabalhador - irs::withholding::year_2022::tax(bruto, &family).unwrap())
-}
-
-fn bruto2empresa(bruto: Money, subsidio_alimentacao_mensal: Money) -> Money {
-	bruto * (1.0 + ss::tax::empresa) * 14.0 / 12.0 + subsidio_alimentacao_mensal
-}
-
-fn empresa2bruto(disponivel: Money, subsidio_alimentacao_mensal: Money) -> Money {
-	(disponivel - subsidio_alimentacao_mensal) / (1.0 + ss::tax::empresa) / 14.0 * 12.0
-}
+//mínimo de existência = 1.5 IAS * 14
+#[allow(dead_code)]
+const IAS: MoneyRate<Monthly> = MoneyRate::new(Money::new(443.20), Monthly::M14); //2022 438.81; // 2021 438.81; // 2020 435.76; // 2019
+#[allow(dead_code)]
+const SALARIO_MINIMO: MoneyRate<Monthly> = MoneyRate::new(Money::new(705.00), Monthly::M14); //2022 665.00; //2021 635.00; //2020 600.0; // 2019
 
 fn main() {
-	let family = ElementoFamiliar { casado: false, titular_unico: false, dependentes: 0 };
-	let insurance_tax = 0.0055;
+	let salary_context = salary::ContextBuilder::default().build().unwrap();
 	println!(
-		" Company cost (tax adj.)   Net Avg  (tax adj)   Net Typ   (tax adj)     Base    (Net)     Meal    \
-		 Aids    Retire. (tax adj)   Ret IRS   Typ %   Avg %"
+		" Company cost   Net Avg    Net Typ    Base       Meal      Aids      Retire.    Typ %    Avg %"
 	);
-	println!("-------------------------------------------------------------------------------------------------------------------------------------------------------");
-	Income::new(2220.0, 200.0, 500.0, true, insurance_tax).print(&family);
-	Income::new(1980.0, 200.0, 650.0, true, insurance_tax).print(&family);
-	Income::new(1980.0, 400.0, 400.0, true, insurance_tax).print(&family);
-	Income::new(1980.0, 400.0, 550.0, true, insurance_tax).print(&family);
-	Income::new(1900.0, 400.0, 450.0, true, insurance_tax).print(&family);
-	Income::new(1900.0, 400.0, 600.0, true, insurance_tax).print(&family);
-	Income::new(2100.0, 200.0, 550.0, true, insurance_tax).print(&family);
-	println!("-------------------------------------------------------------------------------------------------------------------------------------------------------");
-	let family = ElementoFamiliar { casado: true, titular_unico: false, dependentes: 2 };
-	Income::new(45000.0 / 14.0, 0.0, 0.0, true, insurance_tax).print(&family);
+	print(&Salary::new(1900.0.into(), 400.0.into(), 300.0.into(), Some(true)), &salary_context); // Jorge
+	print(&Salary::new(1270.0.into(), 400.0.into(), 0.0.into(), Some(true)), &salary_context); // Ricardo
+	print(&Salary::new(1865.0.into(), 450.0.into(), 600.0.into(), Some(true)), &salary_context); // José
+	println!("--------------");
+	print(&Salary::new(4060.0.into(), 600.0.into(), 1200.0.into(), Some(true)), &salary_context);
+	// 50k net
 }
 
-fn liquido2bruto(mut liquido: Money, alimentacao: Money, family: &ElementoFamiliar) -> Result<Vec<Money>> {
-	liquido -= alimentacao;
-	let bruto = |tax_irs| liquido / (1.0 - ss::tax::trabalhador - tax_irs);
-	let mut result = vec![];
-	let mut old_l0 = 0.0;
-	let dependentes = family.dependentes;
-	for l in irs::withholding::year_2022::tables.for_family(family).iter() {
-		let b = bruto(l.1[std::cmp::min(5, dependentes)] / 100.0);
-		//if b <= old_l0 { break; }
-		if l.0 >= b && b >= salario_minimo.value() && b > old_l0 {
-			result.push(b);
-		}
-		old_l0 = l.0;
-	}
-	ensure!(!result.is_empty(), "No match for {}€", liquido);
-	Ok(result)
+fn print(salary: &Salary, ctx: &salary::Context) {
+	use salary::Heading;
+	let cost = salary.company_cost(ctx).quantity();
+	let plan = salary.yearly_plan_withhold_net(ctx);
+	println!(
+		" {:10}    {:8}   {:8}   {:8}   {:7}   {:7}   {:8}   {:6.2}   {:6.2}",
+		cost + (200.0 * 12.0 + 600.0).into(),
+		plan.yearly_total().quantity() / 12.0,
+		plan.regular,
+		salary.base_salary.gross_payment().quantity(),
+		salary.meal_allowance.gross_payment().quantity(),
+		salary.travel_expenses.gross_payment().quantity(),
+		salary.retirement_funds.gross_payment().quantity(),
+		plan.regular.value() / cost.value() * 12.0 * 100.0,
+		plan.yearly_total().quantity().value() / cost.value() * 100.0,
+	);
 }

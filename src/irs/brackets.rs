@@ -1,44 +1,36 @@
-use super::Taxing;
-use crate::{income::SalaryHeading, Frequency, Money, MoneyRate, Tax};
+use crate::units::{Money, MoneyRate, TaxRate, Yearly};
 
-//mínimo de existência = 1.5 IAS * 14
-fn positive_difference(a: Money, b: Money) -> Money { (a - b).max(0.0) }
+fn positive_difference(a: f64, b: f64) -> f64 { (a - b).max(0.0) }
 
-pub fn taxes(income: &[&dyn SalaryHeading], brackets: &[Bracket]) -> Money {
-	let value = positive_difference(
-		income
-			.iter()
-			.map(|s| if s.irs_taxing() != Taxing::None { s.payment().as_yearly().value() } else { 0.0 })
-			.sum::<f64>(),
-		4104.0,
-	);
-	let mut taxed = 0.0;
+pub fn taxes(income: MoneyRate<Yearly>, brackets: &[Bracket]) -> MoneyRate<Yearly> {
+	let value = positive_difference(income.quantity().value(), 4104.0);
+	let mut taxed = 0.0.into();
 	let mut prev_bracket_value = 0.0;
 	for bracket in brackets.iter() {
-		if bracket.rate.value() > value {
-			taxed += bracket.tax * (value - prev_bracket_value);
+		if bracket.rate.quantity().value() > value {
+			taxed += (bracket.tax * (value - prev_bracket_value)).into();
 			break;
 		} else {
-			taxed += bracket.tax * (bracket.rate.value() - prev_bracket_value);
+			taxed += (bracket.tax * (bracket.rate.quantity().value() - prev_bracket_value)).into();
 		}
-		prev_bracket_value = bracket.rate.value();
+		prev_bracket_value = bracket.rate.quantity().value();
 	}
-	taxed
+	MoneyRate::new(taxed, Yearly)
 }
 
 pub struct Bracket {
-	rate: MoneyRate,
-	tax: Tax,
+	rate: MoneyRate<Yearly>,
+	tax: TaxRate,
 }
 
 impl Bracket {
-	const fn new(yearly: Money, tax: Tax) -> Self {
-		Self { rate: MoneyRate { value: yearly, freq: Frequency::Yearly }, tax }
+	const fn new(yearly: f64, tax: TaxRate) -> Self {
+		Self { rate: MoneyRate::new(Money::new(yearly), Yearly), tax }
 	}
 
-	pub fn rate(self) -> MoneyRate { self.rate }
+	pub fn rate(self) -> MoneyRate<Yearly> { self.rate }
 
-	pub fn tax(self) -> Tax { self.tax }
+	pub fn tax(self) -> TaxRate { self.tax }
 }
 
 pub const year_2022: [Bracket; 9] = [
@@ -73,9 +65,8 @@ pub const year_2019: [Bracket; 7] = [
 	Bracket::new(std::f64::INFINITY, 0.48),
 ];
 
-pub fn escalao(rendimento_colectavel: f64) -> (usize, (MoneyRate, f64, f64)) {
-	year_2021
-		.iter()
+pub fn escalao(rendimento_colectavel: f64) -> (usize, (MoneyRate<Yearly>, f64, f64)) {
+	(year_2022.iter())
 		.scan((0.0, 0.0, 0.001), |(lim, tax, a_abater), Bracket { rate: new_lim, tax: new_tax }| {
 			if rendimento_colectavel < *lim {
 				//println!("{}º escalao (<{:.2}): {:.2} * {:.2}% - {:.2}", i + 1, lim,
@@ -83,7 +74,7 @@ pub fn escalao(rendimento_colectavel: f64) -> (usize, (MoneyRate, f64, f64)) {
 				return None;
 			}
 			*a_abater += *lim * new_tax - *lim * *tax;
-			*lim = new_lim.value();
+			*lim = new_lim.quantity().value();
 			*tax = *new_tax;
 			Some((*new_lim, *new_tax, *a_abater))
 		})

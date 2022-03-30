@@ -1,23 +1,16 @@
-use anyhow::{bail, Result};
-
-use crate::{rate::Frequency, ElementoFamiliar, Money, MoneyRate, Tax};
+use crate::{FamilyElement, Money, TaxRate};
 
 // You can obtain these tables by applying tabler.sh to the
 // table selection at www.economias.pt/docs/tabelas_irs_YYYY.pdf:
 
-/*pub struct RetentionLine {
-	income: Money,
-	tax: [Tax; 6],
-}*/
-
 pub struct RetentionTables {
-	nao_casado: &'static [(Money, [Tax; 6])],
-	casado_titular_unico: &'static [(Money, [Tax; 6])],
-	casado_dois_titulares: &'static [(Money, [Tax; 6])],
+	nao_casado: &'static [(f64, [TaxRate; 6])],
+	casado_titular_unico: &'static [(f64, [TaxRate; 6])],
+	casado_dois_titulares: &'static [(f64, [TaxRate; 6])],
 }
 
 impl RetentionTables {
-	pub fn for_family(&self, family: &ElementoFamiliar) -> &'static [(Money, [Tax; 6])] {
+	pub fn for_family(&self, family: &FamilyElement) -> &'static [(f64, [TaxRate; 6])] {
 		if family.casado {
 			if family.titular_unico {
 				self.casado_titular_unico
@@ -29,17 +22,11 @@ impl RetentionTables {
 		}
 	}
 
-	pub fn tax(&self, gross: MoneyRate, family: &ElementoFamiliar) -> Result<Tax> {
-		if gross.freq != Frequency::Monthly
-			&& gross.freq != Frequency::Monthly11
-			&& gross.freq != Frequency::Monthly14
-		{
-			bail!("Can only calculate withholding tax of incomes of Frequency::Monthly*");
-		}
+	pub fn tax(&self, gross_monthly: Money, family: &FamilyElement) -> TaxRate {
 		let dependentes = family.dependentes;
 		for l in self.for_family(family).iter() {
-			if l.0 >= gross.value() {
-				return Ok(l.1[std::cmp::min(5, dependentes)] / 100.0);
+			if l.0 >= gross_monthly.value() {
+				return l.1[std::cmp::min(5, dependentes)] / 100.0;
 			}
 		}
 		unreachable!();
@@ -54,9 +41,9 @@ pub mod year_2022 {
 		casado_dois_titulares: &casado_dois_titulares,
 	};
 
-	pub fn tax(gross: MoneyRate, family: &ElementoFamiliar) -> Result<Tax> { tables.tax(gross, family) }
+	pub fn tax(gross_monthly: Money, family: &FamilyElement) -> TaxRate { tables.tax(gross_monthly, family) }
 
-	pub const nao_casado: [(Money, [Tax; 6]); 36] = [
+	pub const nao_casado: [(f64, [TaxRate; 6]); 36] = [
 		(710.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(720.00, [1.8, 0.2, 0.0, 0.0, 0.0, 0.0]),
 		(740.00, [4.5, 0.6, 0.0, 0.0, 0.0, 0.0]),
@@ -95,7 +82,7 @@ pub mod year_2022 {
 		(std::f64::INFINITY, [43.8, 43.6, 43.3, 42.4, 42.0, 40.7]),
 	];
 
-	pub const casado_titular_unico: [(Money, [Tax; 6]); 36] = [
+	pub const casado_titular_unico: [(f64, [TaxRate; 6]); 36] = [
 		(710.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(740.00, [3.3, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(754.00, [3.3, 0.0, 0.0, 0.0, 0.0, 0.0]),
@@ -134,7 +121,7 @@ pub mod year_2022 {
 		(std::f64::INFINITY, [40.3, 40.2, 40.1, 39.4, 39.2, 38.0]),
 	];
 
-	pub const casado_dois_titulares: [(Money, [Tax; 6]); 36] = [
+	pub const casado_dois_titulares: [(f64, [TaxRate; 6]); 36] = [
 		(710.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(720.00, [1.8, 1.7, 0.0, 0.0, 0.0, 0.0]),
 		(740.00, [4.5, 3.4, 0.5, 0.0, 0.0, 0.0]),
@@ -174,9 +161,10 @@ pub mod year_2022 {
 	];
 }
 
+#[allow(dead_code)]
 mod ano_2021 {
-	use super::{Money, Tax};
-	pub const dependente_nao_casado: [(Money, [Tax; 6]); 35] = [
+	use super::*;
+	pub const dependente_nao_casado: [(f64, [TaxRate; 6]); 35] = [
 		(686.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(718.00, [4.0, 0.7, 0.0, 0.0, 0.0, 0.0]),
 		(739.00, [7.2, 2.7, 0.0, 0.0, 0.0, 0.0]),
@@ -215,9 +203,10 @@ mod ano_2021 {
 	];
 }
 
+#[allow(dead_code)]
 mod ano_2020 {
-	use super::{Money, Tax};
-	pub const dependente_nao_casado: [(Money, [Tax; 6]); 36] = [
+	use super::*;
+	pub const dependente_nao_casado: [(f64, [TaxRate; 6]); 36] = [
 		(659.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(686.00, [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(718.00, [4.2, 0.8, 0.0, 0.0, 0.0, 0.0]),
@@ -257,9 +246,10 @@ mod ano_2020 {
 	];
 }
 
+#[allow(dead_code)]
 mod ano_2019 {
-	use super::{Money, Tax};
-	pub const dependente_nao_casado: [(Money, [Tax; 6]); 36] = [
+	use super::*;
+	pub const dependente_nao_casado: [(f64, [TaxRate; 6]); 36] = [
 		(654.00, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(683.00, [0.2, 0.0, 0.0, 0.0, 0.0, 0.0]),
 		(715.00, [4.4, 1.0, 0.0, 0.0, 0.0, 0.0]),
