@@ -1,8 +1,6 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use anyhow::{bail, Result};
-
-use super::{Money, MoneyRate};
+use super::{Money, MoneyRate, UnitsError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct QuantityPerTime<T, P> {
@@ -10,7 +8,9 @@ pub struct QuantityPerTime<T, P> {
 	period: P,
 }
 impl<T, P> QuantityPerTime<T, P> {
-	pub const fn new(quantity: T, period: P) -> Self { Self { qty: quantity, period } }
+	pub fn new<Q: Into<T>>(quantity: Q, period: P) -> Self { Self { qty: quantity.into(), period } }
+
+	pub const fn new_const(quantity: T, period: P) -> Self { Self { qty: quantity, period } }
 
 	pub const fn quantity_ref(&self) -> &T { &self.qty }
 
@@ -43,11 +43,11 @@ where
 }
 
 impl<T: Clone + Add<T, Output = T>, P: Clone + Eq> QuantityPerTime<T, P> {
-	pub fn add(&self, rhs: &Self) -> Result<Self> {
+	pub fn add(&self, rhs: &Self) -> Result<Self, UnitsError> {
 		if self.period == rhs.period {
 			Ok(Self { qty: self.qty.clone() + rhs.qty.clone(), period: self.period.clone() })
 		} else {
-			bail!("Period must be the same")
+			Err(UnitsError::PeriodIsDifferent)
 		}
 	}
 }
@@ -90,7 +90,7 @@ impl<U, T: DivAssign<U>, P> DivAssign<U> for QuantityPerTime<T, P> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Yearly;
 impl MoneyRate<Yearly> {
-	pub const fn zero() -> Self { Self::new(Money::new(0.0), Yearly) }
+	pub const fn zero() -> Self { Self { qty: Money::new(0.0), period: Yearly } }
 }
 impl Default for MoneyRate<Yearly> {
 	fn default() -> Self { Self::zero() }
@@ -108,9 +108,11 @@ impl<T: Sub<T, Output = T>> Sub<Self> for QuantityPerTime<T, Yearly> {
 impl<T: SubAssign<T>> SubAssign<Self> for QuantityPerTime<T, Yearly> {
 	fn sub_assign(&mut self, rhs: Self) { self.qty.sub_assign(rhs.qty) }
 }
-impl<T: Mul<f64, Output = T>> From<QuantityPerTime<T, Monthly>> for QuantityPerTime<T, Yearly> {
-	fn from(monthly: QuantityPerTime<T, Monthly>) -> Self {
-		Self { qty: monthly.qty * monthly.period.months_in_year(), period: Yearly }
+
+pub struct Quarterly;
+impl<T: Mul<f64, Output = T>> From<QuantityPerTime<T, Quarterly>> for QuantityPerTime<T, Yearly> {
+	fn from(monthly: QuantityPerTime<T, Quarterly>) -> Self {
+		Self { qty: monthly.qty * 4.0, period: Yearly }
 	}
 }
 
@@ -120,7 +122,6 @@ pub enum Monthly {
 	M12,
 	M14,
 }
-
 impl Monthly {
 	fn months_in_year(&self) -> f64 {
 		match self {
@@ -129,6 +130,22 @@ impl Monthly {
 			Self::M14 => 14.0,
 		}
 	}
+}
+impl<T: Mul<f64, Output = T>> From<QuantityPerTime<T, Monthly>> for QuantityPerTime<T, Yearly> {
+	fn from(monthly: QuantityPerTime<T, Monthly>) -> Self {
+		Self { qty: monthly.qty * monthly.period.months_in_year(), period: Yearly }
+	}
+}
+impl<T: Mul<f64, Output = T>> QuantityPerTime<T, Monthly> {
+	pub fn into_yearly(self) -> QuantityPerTime<T, Yearly> { QuantityPerTime::<T, Yearly>::from(self) }
+}
+impl<T: Clone + Mul<f64, Output = T>> From<&QuantityPerTime<T, Monthly>> for QuantityPerTime<T, Yearly> {
+	fn from(monthly: &QuantityPerTime<T, Monthly>) -> Self {
+		Self { qty: monthly.qty.clone() * monthly.period.months_in_year(), period: Yearly }
+	}
+}
+impl<T: Clone + Mul<f64, Output = T>> QuantityPerTime<T, Monthly> {
+	pub fn as_yearly(&self) -> QuantityPerTime<T, Yearly> { QuantityPerTime::<T, Yearly>::from(self) }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

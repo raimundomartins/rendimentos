@@ -4,14 +4,14 @@ fn positive_difference(a: f64, b: f64) -> f64 { (a - b).max(0.0) }
 
 pub fn taxes(income: MoneyRate<Yearly>, brackets: &[Bracket]) -> MoneyRate<Yearly> {
 	let value = positive_difference(income.quantity().value(), 4104.0);
-	let mut taxed = 0.0.into();
+	let mut taxed = 0.0;
 	let mut prev_bracket_value = 0.0;
 	for bracket in brackets.iter() {
 		if bracket.rate.quantity().value() > value {
-			taxed += (bracket.tax * (value - prev_bracket_value)).into();
+			taxed += bracket.tax * (value - prev_bracket_value);
 			break;
 		} else {
-			taxed += (bracket.tax * (bracket.rate.quantity().value() - prev_bracket_value)).into();
+			taxed += bracket.tax * (bracket.rate.quantity().value() - prev_bracket_value);
 		}
 		prev_bracket_value = bracket.rate.quantity().value();
 	}
@@ -25,7 +25,7 @@ pub struct Bracket {
 
 impl Bracket {
 	const fn new(yearly: f64, tax: TaxRate) -> Self {
-		Self { rate: MoneyRate::new(Money::new(yearly), Yearly), tax }
+		Self { rate: MoneyRate::new_const(Money::new(yearly), Yearly), tax }
 	}
 
 	pub fn rate(self) -> MoneyRate<Yearly> { self.rate }

@@ -86,13 +86,13 @@ mod tests {
 	fn yearly_plan_yearly_total() {
 		assert!(
 			YearlyPlan { regular: Money::from(1000.0), vacation: 20.0.into(), bonus: 3.0.into() }
-				.yearly_total() == MoneyRate::new(11026.0.into(), Yearly)
+				.yearly_total() == MoneyRate::new(11026.0, Yearly)
 		)
 	}
 
 	#[test]
 	fn yearly_plan_addassign_monthly_regular() {
-		let mut plan = YearlyPlan::default();
+		let mut plan = YearlyPlan::<f64>::default();
 		plan += QuantityPerTime::new(1.0, Monthly::M12);
 		assert!(plan.regular == 1.0);
 		assert!(plan.vacation == 1.0);
@@ -101,7 +101,7 @@ mod tests {
 
 	#[test]
 	fn yearly_plan_addassign_monthly_useful() {
-		let mut plan = YearlyPlan::default();
+		let mut plan = YearlyPlan::<f64>::default();
 		plan += QuantityPerTime::new(1.0, Monthly::M11);
 		assert!(plan.regular == 1.0);
 		assert!(plan.vacation == 0.0);
@@ -110,7 +110,7 @@ mod tests {
 
 	#[test]
 	fn yearly_plan_addassign_monthly_bonus() {
-		let mut plan = YearlyPlan::default();
+		let mut plan = YearlyPlan::<f64>::default();
 		plan += QuantityPerTime::new(1.0, Monthly::M14);
 		assert!(plan.regular == 1.0);
 		assert!(plan.vacation == 1.0);

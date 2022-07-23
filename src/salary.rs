@@ -10,7 +10,7 @@ pub struct Context {
 	pub family: FamilyElement,
 	#[builder(default = "22")]
 	pub vacation_days: u32,
-	#[builder(default = "MoneyRate::<Yearly>::new(4.0.into(), Yearly)")]
+	#[builder(default = "MoneyRate::<Yearly>::new(4.0, Yearly)")]
 	pub meal_card_cost: MoneyRate<Yearly>,
 	#[builder(default = "0.0078")]
 	pub meal_card_tax: TaxRate,
@@ -87,7 +87,9 @@ pub struct BaseSalary {
 	monthly: MoneyRate<Monthly>,
 }
 impl BaseSalary {
-	pub fn new(monthly: Money) -> Self { Self { monthly: MoneyRate::new(monthly, Monthly::M14) } }
+	pub fn new<M: Into<Money>>(monthly: M) -> Self {
+		Self { monthly: MoneyRate::new(monthly.into(), Monthly::M14) }
+	}
 
 	pub fn monthly(&self) -> MoneyRate<Monthly> { self.monthly }
 }
@@ -130,7 +132,7 @@ impl Heading for MealAllowance {
 
 	fn ss_taxable_parcel(&self) -> MoneyRate<Monthly> { self.irs_taxable_parcel() }
 
-	fn irs_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0.into(), Monthly::M11) }
+	fn irs_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0, Monthly::M11) }
 
 	fn company_cost(&self, ctx: &Context) -> MoneyRate<Yearly> {
 		let yearly_paid = MoneyRate::<Yearly>::from(self.gross_payment());
@@ -153,7 +155,7 @@ impl Heading for TravelExpenses {
 
 	fn ss_taxable_parcel(&self) -> MoneyRate<Monthly> { self.irs_taxable_parcel() }
 
-	fn irs_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0.into(), Monthly::M11) }
+	fn irs_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0, Monthly::M11) }
 
 	fn company_cost(&self, ctx: &Context) -> MoneyRate<Yearly> {
 		let mut payment: MoneyRate<Yearly> = self.gross_payment().into();
@@ -169,17 +171,19 @@ pub struct RetirementFunds {
 	pub monthly: MoneyRate<Monthly>,
 }
 impl RetirementFunds {
-	pub fn new(monthly: Money) -> Self { Self { monthly: MoneyRate::new(monthly, Monthly::M12) } }
+	pub fn new<M: Into<Money>>(monthly: M) -> Self {
+		Self { monthly: MoneyRate::new(monthly.into(), Monthly::M12) }
+	}
 }
 
 impl Heading for RetirementFunds {
 	fn gross_payment(&self) -> MoneyRate<Monthly> { self.monthly }
 
-	fn ss_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0.into(), Monthly::M12) }
+	fn ss_taxable_parcel(&self) -> MoneyRate<Monthly> { MoneyRate::new(0.0, Monthly::M12) }
 
 	fn irs_taxable_parcel(&self) -> MoneyRate<Monthly> { self.gross_payment() }
 
-	fn company_cost(&self, _ctx: &Context) -> MoneyRate<Yearly> { self.gross_payment().into() }
+	fn company_cost(&self, _ctx: &Context) -> MoneyRate<Yearly> { (self.gross_payment() * 1.02).into() }
 }
 
 #[derive(Debug, Clone)]
@@ -205,12 +209,12 @@ pub struct Salary {
 }
 
 impl Salary {
-	pub fn new(base: Money, cost_aid: Money, retirement: Money, meal_card: Option<bool>) -> Self {
+	pub fn new<M1: Into<Money>, M2: Into<Money>>(base: M1, meal_card: Option<bool>, cost_aid: M2) -> Self {
 		Salary {
 			base_salary: BaseSalary { monthly: MoneyRate::new(base, Monthly::M14) },
 			meal_allowance: MealAllowance { on_card: meal_card },
-			travel_expenses: TravelExpenses { monthly: MoneyRate::new(cost_aid, Monthly::M11) },
-			retirement_funds: RetirementFunds { monthly: MoneyRate::new(retirement, Monthly::M12) },
+			travel_expenses: TravelExpenses { monthly: MoneyRate::new(cost_aid.into(), Monthly::M11) },
+			retirement_funds: RetirementFunds { monthly: MoneyRate::new(0.0, Monthly::M12) },
 		}
 	}
 
@@ -276,7 +280,7 @@ mod tests {
 	#[test]
 	fn base_salary_company_cost() {
 		let ctx = ContextBuilder::default().build().unwrap();
-		assert_eq(BaseSalary::new(1000.0.into()).company_cost(&ctx), 1000.0 * (1.2375 + 0.01) * 14.0);
+		assert_eq(BaseSalary::new(1000.0).company_cost(&ctx), 1000.0 * (1.2375 + 0.01) * 14.0);
 	}
 
 	#[test]
@@ -294,78 +298,13 @@ mod tests {
 	fn travel_expenses_company_cost() {
 		let ctx =
 			ContextBuilder::default().company_tsu(0.2375).salary_guarantee_fund_tax(0.01).build().unwrap();
-		let salary_cost = BaseSalary::new(1000.0.into()).company_cost(&ctx);
+		let salary_cost = BaseSalary::new(1000.0).company_cost(&ctx);
 		assert_eq(salary_cost, 1000.0 * (1.2375 + 0.01) * 14.0);
 	}
 
 	#[test]
 	fn retirement_fund_company_cost() {
 		let ctx = ContextBuilder::default().build().unwrap();
-		assert_eq(RetirementFunds::new(1000.0.into()).company_cost(&ctx), 1000.0 * 12.0);
+		assert_eq(RetirementFunds::new(1000.0).company_cost(&ctx), 1000.0 * 12.0 * 1.02);
 	}
 }
-
-/*fn net(mut payment: MoneyRate, family: &ElementoFamiliar, irs: bool, ss: bool) -> MoneyRate {
-	let mut taxes = 0.0;
-	if irs {
-		taxes += irs::withholding::year_2022::tax(payment, family).unwrap();
-	}
-	if ss {
-		taxes += ss::tax::TRABALHADOR;
-	}
-	payment.value *= 1.0 - taxes;
-	payment
-}*/
-/*pub fn monthly_net_average(&self, family: &ElementoFamiliar) -> MoneyRate {
-	let salary_retirement_yearly_net = net(
-		MoneyRate::new(self.base_salary.monthly + self.retirement_funds.monthly, Frequency::Monthly),
-		family,
-		true,
-		true,
-	)
-	.value() * 12.0;
-	let salary_bonus_yearly_net =
-		net(MoneyRate::new(self.base_salary.monthly, Frequency::Monthly14), family, true, true).value()
-			* 2.0;
-	MoneyRate::new(
-		(salary_retirement_yearly_net
-			+ salary_bonus_yearly_net
-			+ self.meal_allowance.net(family).as_yearly().value()
-			+ self.travel_expenses.net(family).as_yearly().value())
-			/ 12.0,
-		Frequency::Monthly,
-	)
-}
-
-pub fn monthly_net_typical(&self, family: &ElementoFamiliar) -> MoneyRate {
-	let salary_retirement_yearly_net = net(
-		MoneyRate::new(self.base_salary.monthly + self.retirement_funds.monthly, Frequency::Monthly),
-		family,
-		true,
-		true,
-	)
-	.value();
-	MoneyRate::new(
-		salary_retirement_yearly_net
-		//self.base_salary.net(family).value()
-			+ self.meal_allowance.net(family).value() * 22.0
-			+ self.travel_expenses.net(family).value(),
-		//+ self.retirement_funds.net(family).value(),
-		Frequency::Monthly,
-	)
-}
-
-pub fn annual_irs(&self) -> Money {
-	irs::brackets::taxes(
-		&[&self.base_salary, &self.meal_allowance, &self.travel_expenses, &self.retirement_funds],
-		&irs::brackets::year_2022,
-	)
-}
-
-pub fn irs_retirement_taxes(&self) -> Money {
-	self.annual_irs()
-		- irs::brackets::taxes(
-			&[&self.base_salary, &self.meal_allowance, &self.travel_expenses],
-			&irs::brackets::year_2022,
-		)
-}*/
