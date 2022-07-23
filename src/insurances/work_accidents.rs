@@ -51,6 +51,7 @@ impl GeneralPolicy {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::salary::MealAllowance;
 
 	fn assert_eq(yearly: MoneyRate<Yearly>, expected: f64) {
 		//println!("Yearly: {:?}\texpected: {:.02}", yearly, expected);
@@ -66,12 +67,13 @@ mod tests {
 
 	#[test]
 	fn first_three_workers() {
+		use crate::non_taxation_limits::SUBSIDIO_REFEICAO;
 		let ctx = Context { inem_tax: 0.02, fat_tax: 0.0015, stamp_duty: 0.04 };
 		let policy = GeneralPolicy::new(0.0055, 5.0);
 		let salaries = vec![
-			Salary::new(800.0, Some(false), 0.0),
-			Salary::new(800.0, Some(false), 0.0),
-			Salary::new(8.85 * 52.0 * 20.0 / 12.0, None, 0.0),
+			Salary::new(800.0, MealAllowance::Cash(SUBSIDIO_REFEICAO), 0.0),
+			Salary::new(800.0, MealAllowance::Cash(SUBSIDIO_REFEICAO), 0.0),
+			Salary::new(8.85 * 52.0 * 20.0 / 12.0, MealAllowance::None, 0.0),
 		];
 		assert_eq(
 			salaries.iter().fold(MoneyRate::zero(), |acc, sal| acc + policy.coverage_capital(sal)),
@@ -91,10 +93,10 @@ mod tests {
 		let ctx = Context { inem_tax: 0.02, fat_tax: 0.0015, stamp_duty: 0.04 };
 		let pol = GeneralPolicy::new(0.0055, 5.0);
 		let salaries = vec![
-			Salary::new(800.0, Some(false), 0.0),
-			Salary::new(800.0, Some(false), 0.0),
-			Salary::new(1270.0, Some(true), 0.0),
-			Salary::new(2364.0, Some(true), 0.0),
+			Salary::new(800.0, MealAllowance::cash(), 0.0),
+			Salary::new(800.0, MealAllowance::cash(), 0.0),
+			Salary::new(1270.0, MealAllowance::card(), 0.0),
+			Salary::new(2364.0, MealAllowance::card(), 0.0),
 		];
 		assert_eq(
 			salaries.iter().fold(MoneyRate::zero(), |acc, sal| acc + pol.coverage_capital(sal)),

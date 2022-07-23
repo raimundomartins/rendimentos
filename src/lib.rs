@@ -53,11 +53,11 @@ mod tests {
 			" HRForecast  Company cost   Y Net Avg   Net Avg    Net Typ    Base       Meal      Aids      \
 			 Typ %    Avg %"
 		);
-		print(&Salary::new(1270.0, Some(true), 400.0), &salary_context); // Ricardo
-		print(&Salary::new(2364.0, Some(true), 450.0), &salary_context); // José
+		print(&Salary::new(1270.0, salary::MealAllowance::card(), 400.0), &salary_context); // Ricardo
+		print(&Salary::new(2364.0, salary::MealAllowance::card(), 450.0), &salary_context); // José
 		println!("--------------");
-		print(&Salary::new(5611.0, Some(true), 400.0), &salary_context);
-		print(&Salary::new(6406.0, Some(true), 0.0), &salary_context);
+		print(&Salary::new(5611.0, salary::MealAllowance::card(), 400.0), &salary_context);
+		print(&Salary::new(6406.0, salary::MealAllowance::card(), 0.0), &salary_context);
 	}
 
 	fn print(salary: &Salary, ctx: &salary::Context) {

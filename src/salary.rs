@@ -1,6 +1,10 @@
 use derive_builder::Builder;
 
-use crate::{ss, units::YearlyPlan, FamilyElement, Money, MoneyRate, Monthly, TaxRate, Yearly};
+use crate::{
+	ss,
+	units::{Workdaily, YearlyPlan},
+	FamilyElement, Money, MoneyRate, Monthly, TaxRate, Yearly,
+};
 
 #[derive(Builder, Debug, Default, Clone, PartialEq)]
 pub struct Context {
@@ -107,24 +111,31 @@ impl Heading for BaseSalary {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct MealAllowance {
-	pub on_card: Option<bool>,
+pub enum MealAllowance {
+	None,
+	Cash(MoneyRate<Workdaily>),
+	Card(MoneyRate<Workdaily>),
+}
+impl MealAllowance {
+	pub fn cash() -> Self { Self::Cash(crate::non_taxation_limits::SUBSIDIO_REFEICAO) }
+
+	pub fn card() -> Self { Self::Card(crate::non_taxation_limits::VALE_REFEICAO) }
 }
 impl Heading for MealAllowance {
 	fn gross_payment(&self) -> MoneyRate<Monthly> {
 		MoneyRate::new(
-			match self.on_card {
-				Some(true) => {
-					crate::non_taxation_limits::VALE_REFEICAO
-						.into_yearly(None)//Some(Workdaily::actual_workdays_in_year(2022, 22)))
+			match self {
+				Self::Card(v) => {
+					//crate::non_taxation_limits::VALE_REFEICAO
+					v.into_yearly(None)//Some(Workdaily::actual_workdays_in_year(2022, 22)))
 						.quantity() / 11.0
 				}
-				Some(false) => {
-					crate::non_taxation_limits::SUBSIDIO_REFEICAO
-						.into_yearly(None)//Some(Workdaily::actual_workdays_in_year(2022, 22)))
+				Self::Cash(v) => {
+					//crate::non_taxation_limits::SUBSIDIO_REFEICAO
+					v.into_yearly(None)//Some(Workdaily::actual_workdays_in_year(2022, 22)))
 						.quantity() / 11.0
 				}
-				None => 0.0.into(),
+				Self::None => 0.0.into(),
 			},
 			Monthly::M11,
 		)
@@ -136,10 +147,9 @@ impl Heading for MealAllowance {
 
 	fn company_cost(&self, ctx: &Context) -> MoneyRate<Yearly> {
 		let yearly_paid = MoneyRate::<Yearly>::from(self.gross_payment());
-		let card_cost = if self.on_card == Some(true) {
-			ctx.meal_card_cost + yearly_paid * ctx.meal_card_tax
-		} else {
-			MoneyRate::zero()
+		let card_cost = match self {
+			Self::Card(_) => ctx.meal_card_cost + yearly_paid * ctx.meal_card_tax,
+			_ => MoneyRate::zero(),
 		};
 		yearly_paid + card_cost
 	}
@@ -209,13 +219,26 @@ pub struct Salary {
 }
 
 impl Salary {
-	pub fn new<M1: Into<Money>, M2: Into<Money>>(base: M1, meal_card: Option<bool>, cost_aid: M2) -> Self {
+	pub fn new<M1: Into<Money>, M2: Into<Money>>(
+		base: M1, meal_allowance: MealAllowance, cost_aid: M2,
+	) -> Self {
 		Salary {
 			base_salary: BaseSalary { monthly: MoneyRate::new(base, Monthly::M14) },
-			meal_allowance: MealAllowance { on_card: meal_card },
+			meal_allowance,
 			travel_expenses: TravelExpenses { monthly: MoneyRate::new(cost_aid.into(), Monthly::M11) },
 			retirement_funds: RetirementFunds { monthly: MoneyRate::new(0.0, Monthly::M12) },
 		}
+	}
+
+	pub fn meal_allowance(mut self, meal_allowance: MealAllowance) -> Self {
+		self.meal_allowance = meal_allowance;
+		self
+	}
+
+	pub fn travel_expenses<M: Into<Money>>(mut self, travel_expenses_monthly: M) -> Self {
+		self.travel_expenses =
+			TravelExpenses { monthly: MoneyRate::new(travel_expenses_monthly, Monthly::M11) };
+		self
 	}
 
 	pub fn work_accidents_insurance(&self, ctx: &Context) -> MoneyRate<Yearly> {
@@ -285,13 +308,11 @@ mod tests {
 
 	#[test]
 	fn meal_allowance_company_cost() {
+		use crate::non_taxation_limits::{SUBSIDIO_REFEICAO, VALE_REFEICAO};
 		let ctx = ContextBuilder::default().build().unwrap();
-		assert_eq(MealAllowance { on_card: None }.company_cost(&ctx), 0.0);
-		assert_eq(MealAllowance { on_card: Some(false) }.company_cost(&ctx), 4.77 * 22.0 * 11.0);
-		assert_eq(
-			MealAllowance { on_card: Some(true) }.company_cost(&ctx),
-			7.63 * 22.0 * 11.0 * 1.0078 + 4.0,
-		);
+		assert_eq(MealAllowance::None.company_cost(&ctx), 0.0);
+		assert_eq(MealAllowance::Cash(SUBSIDIO_REFEICAO).company_cost(&ctx), 4.77 * 22.0 * 11.0);
+		assert_eq(MealAllowance::Card(VALE_REFEICAO).company_cost(&ctx), 7.63 * 22.0 * 11.0 * 1.0078 + 4.0);
 	}
 
 	#[test]
